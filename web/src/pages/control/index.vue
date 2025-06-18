@@ -32,9 +32,9 @@ function formatTime(timestamp: number) {
   return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
 }
 
-function goEditConfig() {
+function toPage(path: string) {
   router.push({
-    path: '/config',
+    path: path,
     query: { device: JSON.stringify(device.value) },
   })
 }
@@ -93,7 +93,12 @@ async function sendSms() {
     </van-cell-group>
 
     <van-cell-group inset style="margin-top: 16px;">
-      <van-cell title="修改配置" icon="setting-o" is-link @click="goEditConfig">
+      <van-cell title="修改配置" icon="setting-o" is-link @click="toPage('/config')">
+        <template #icon>
+          <div class="i-carbon:settings text-gray-400 mr-5 self-center" />
+        </template>
+      </van-cell>
+      <van-cell title="远程指令" icon="setting-o" is-link @click="toPage('/atCmd')">
         <template #icon>
           <div class="i-carbon:settings text-gray-400 mr-5 self-center" />
         </template>

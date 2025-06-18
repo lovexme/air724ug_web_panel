@@ -48,6 +48,40 @@ local function handleTask(ws, json_data)
                 if json_data.task == "get_temperature" then
                     -- 调用温度查询函数
                     result = util_temperature.get()
+                elseif json_data.task == "at_cmd" then
+                    -- 检查参数
+                    if not json_data.command then
+                        error = "缺少必要参数: command"
+                    else
+                        -- 执行AT指令
+                        local response = ""
+                        local taskId = json_data.taskId
+                        
+                        -- 使用一个全局的响应处理函数
+                        local function atResponseHandler(cmd, success, resp, inter)
+                            if inter then
+                                response = response .. inter .. "\n"
+                            end
+                            if resp then
+                                response = response .. resp
+                            end
+                            
+                            -- 发送执行结果给服务端
+                            local response_data = {
+                                type = "task_result",
+                                taskId = taskId,
+                                task = json_data.task,
+                                result = response,
+                                error = nil
+                            }
+                            ws:send(json.encode(response_data), true)
+                        end
+                        
+                        -- 发送AT指令，直接使用回调函数
+                        ril.request(json_data.command, nil, atResponseHandler)
+                        -- 提前返回，等待回调处理
+                        return
+                    end
                 elseif json_data.task == "send_sms" then
                     -- 检查参数
                     if not json_data.rcv_phone or not json_data.content then
