@@ -111,51 +111,70 @@ async function submit() {
     return
   loading.value = true
 
-  // 显示命令（不清空终端，追加内容）
-  if (terminal) {
-    terminal.write('\r\n$ ' + cmdText.value + '\r\n\r\n')
+  // 分割多条指令（按换行符分割）
+  const commands = cmdText.value.split('\n').filter(cmd => cmd.trim() !== '')
+
+  if (commands.length === 0) {
+    loading.value = false
+    return
   }
 
-  try {
-    const response = await request.post('/executeTask', {
-      imei: device.value.imei,
-      task: 'at_cmd',
-      command: cmdText.value,
-    }) as any
-    if (response.success) {
-      const result = response.result || '指令执行成功'
-      if (terminal) {
-        // 处理结果中的换行符，确保正确显示
-        const formattedResult = result.replace(/\n/g, '\r\n')
-        terminal.write(formattedResult + '\r\n')
-      }
-      responseResult.value = result
+  // 顺序执行每条指令
+  for (let i = 0; i < commands.length; i++) {
+    const command = commands[i].trim()
+    if (!command) continue
+
+    // 显示当前执行的指令
+    if (terminal) {
+      terminal.write(`\r\n$ ${command}\r\n\r\n`)
     }
-    else {
-      const errorMsg = `错误: ${response.message || '执行失败'}`
+
+    try {
+      const response = await request.post('/executeTask', {
+        imei: device.value.imei,
+        task: 'at_cmd',
+        command: command,
+      }) as any
+
+      if (response.success) {
+        const result = response.result || '指令执行成功'
+        if (terminal) {
+          // 处理结果中的换行符，确保正确显示
+          const formattedResult = result.replace(/\n/g, '\r\n')
+          terminal.write(formattedResult + '\r\n')
+        }
+        responseResult.value = result
+      }
+      else {
+        const errorMsg = `错误: ${response.message || '执行失败'}`
+        if (terminal) {
+          terminal.write('\x1b[31m' + errorMsg + '\x1b[0m\r\n')
+        }
+        responseResult.value = errorMsg
+      }
+    }
+    catch (error) {
+      const errorMsg = `错误: ${error.message || '网络请求失败'}`
       if (terminal) {
         terminal.write('\x1b[31m' + errorMsg + '\x1b[0m\r\n')
       }
       responseResult.value = errorMsg
     }
-  }
-  catch (error) {
-    const errorMsg = `错误: ${error.message || '网络请求失败'}`
-    if (terminal) {
-      terminal.write('\x1b[31m' + errorMsg + '\x1b[0m\r\n')
+
+    // 在指令之间添加短暂延迟
+    if (i < commands.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
-    responseResult.value = errorMsg
   }
-  finally {
-    loading.value = false
-  }
+
+  loading.value = false
 }
 
 </script>
 
 <template>
   <div class="at-cmd-container">
-    <van-field v-model="cmdText" type="textarea" rows="4" placeholder="请输入AT指令" class="at-input" />
+    <van-field v-model="cmdText" type="textarea" rows="4" placeholder="请输入AT指令，可换行执行多条" class="at-input" />
 
     <!-- 常用指令标签 -->
     <div class="common-commands">
@@ -184,6 +203,11 @@ async function submit() {
 </template>
 
 <style scoped>
+.at-cmd-container {
+  height: calc(100vh - var(--van-nav-bar-height) - 32px);
+  display: flex;
+  flex-direction: column;
+}
 .at-input {
   margin-bottom: 16px;
 }
@@ -227,8 +251,9 @@ async function submit() {
 
 .terminal-body {
   background: #1e1e1e;
-  height: 300px;
   padding: 8px;
+  flex: auto;
+  max-height: 300px;
 }
 
 /* xterm.js 样式覆盖 */
