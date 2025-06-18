@@ -34,7 +34,7 @@ function generateRandomLightColor() {
 
 // 常用AT指令标签
 const commonCommands = ref<CommandItem[]>([
-  { label: 'AT+CNUM', command: 'AT+CGSN', desc: '获取手机号' },
+  { label: 'AT+CNUM', command: 'AT+CNUM', desc: '获取手机号' },
   { label: 'AT+CGSN', command: 'AT+CGSN', desc: '获取IMEI号' },
   { label: 'AT+ICCID', command: 'AT+ICCID', desc: '获取ICCID' },
   { label: 'AT+CPIN?', command: 'AT+CPIN?', desc: '查询SIM卡状态' },
