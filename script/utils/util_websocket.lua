@@ -7,62 +7,41 @@ local util_notify = require "util_notify"
 local util_temperature = require "util_temperature"
 local nvm = require "nvm"
 
--- 同步nvm.para到config
 config = nvm.para
 
--- 将 Lua 配置字符串解析为 Lua 表的辅助函数
-local function parse_lua_config_string(config_text)
-    local sandbox_env = {}
-    sandbox_env.table = table
-    sandbox_env.string = string
-    sandbox_env.pairs = pairs
-    sandbox_env.ipairs = ipairs
-    sandbox_env.type = type
-    sandbox_env.tostring = tostring
-
-    local captured_module_table = nil
-    sandbox_env.module = function(_, module_name_arg)
-        local new_table = {}
-        captured_module_table = new_table
-        setfenv(1, new_table)
-        return new_table
+local function parse_config(config_text)
+    -- 参数检查
+    if type(config_text) ~= "string" or config_text == "" then
+        return nil, "配置文本不能为空"
     end
 
-    local func, err = loadstring(config_text)
-    if not func then
-        return nil, "加载配置失败: " .. err
-    end
+    -- 预处理配置文本
+    local processed_text = config_text:gsub("module%(%.%.%.%)", ""):gsub("%-%-[^\n]*", ""):gsub("\n%s*\n", "\n")
 
-    setfenv(func, sandbox_env)
-
-    local success, result = pcall(func)
-    if not success then
-        return nil, "执行配置失败: " .. result
-    end
-
-    if captured_module_table then
-        return captured_module_table
+    -- 创建一个环境table来捕获配置变量
+    local env = {}
+    local chunk = loadstring(processed_text)
+    if chunk then
+        setfenv(chunk, env)
+        chunk()
     else
-        local final_config_table = {}
-        for k, v in pairs(sandbox_env) do
-            if k ~= "table" and k ~= "string" and k ~= "pairs" and k ~= "ipairs" and
-               k ~= "type" and k ~= "tostring" and k ~= "module" then
-                final_config_table[k] = v
-            end
-        end
-        return final_config_table
+        log.info("set_config", "Failed to parse_config")
     end
+
+    return env
 end
 
 local function handleTask(ws, json_data)
-    log.info("websocket:message", json_data.task)
+
+    log.info("websocket", json_data.task)
+
     -- 处理task类型的消息
     if json_data.type == "task" and json_data.taskId then
         -- 执行对应的task函数
         sys.taskInit(function()
             local result = nil
             local error = nil
-            
+
             -- 执行task函数
             local success, err = pcall(function()
                 -- 根据taskid执行不同的任务
@@ -74,16 +53,13 @@ local function handleTask(ws, json_data)
                     if not json_data.rcv_phone or not json_data.content then
                         error = "缺少必要参数: rcv_phone 或 content"
                     else
-                        -- 发送短信
-                        log.info('发送短信', json_data.rcv_phone, json_data.content)
-                        -- 补全发送短信的逻辑
                         local sms_success, sms_err = pcall(function()
-                             sms.send(json_data.rcv_phone, json_data.content)
+                            sms.send(json_data.rcv_phone, json_data.content)
                         end)
                         if sms_success then
-                             result = "短信发送成功"
+                            result = "短信发送成功"
                         else
-                             error = "短信发送失败: " .. tostring(sms_err)
+                            error = "短信发送失败: " .. tostring(sms_err)
                         end
                     end
                 elseif json_data.task == "get_config" then
@@ -100,44 +76,43 @@ local function handleTask(ws, json_data)
                     if not json_data.configText or type(json_data.configText) ~= "string" then
                         error = "缺少必要参数: configText (必须是字符串)"
                     else
-                        -- 直接写入 configText 到 /nvm_para.lua
-                        local file = io.open("/nvm_para.lua", "w+")
-                        if file then
-                            file:write(json_data.configText)
-                            file:close()
-                            -- 直接解析 configText 并更新 config 表
-                            local newcfg, err = parse_lua_config_string(json_data.configText)
-                            if newcfg then
-                                for k, v in pairs(newcfg) do
-                                    config[k] = v
-                                end
-                                result = {success = true}
-                            else
-                                error = "解析配置字符串失败: " .. err
-                            end
+                        -- 解析配置
+                        local config_table, err = parse_config(json_data.configText)
+                        if not config_table then
+                            log.info('set_config', err)
                         else
-                            error = "无法写入/nvm_para.lua文件"
+                            for k, v in pairs(config_table) do
+                                if type(v) == 'number' or type(v) == 'string' or type(v) == "boolean" or type(v) == "table" then
+                                    nvm.set(k, v)
+                                end
+                            end
+                            config = nvm.para
+                            -- 直接写入 configText 到 /nvm_para.lua 方便读取修改
+                            local file = io.open("/nvm_para.lua", "w+")
+                            if file then
+                                file:write(json_data.configText)
+                                file:close()
+                            else
+                                error = "无法写入/nvm_para.lua文件"
+                            end
+                            result = { success = true }
                         end
                     end
                 else
                     error = "未知的任务类型: " .. (json_data.task or "nil")
                 end
             end)
-            
+
             if not success then
                 error = err
             end
-            
-            -- 发送执行结果给服务端
-            local response = {
-                type = "task_result",
-                taskId = json_data.taskId,
-                task = json_data.task,
-                result = result,
-                error = error
-            }
 
-            log.info('发送任务结果：', json.encode(response))
+            -- 发送执行结果给服务端
+            local response = { type = "task_result", taskId = json_data.taskId, task = json_data.task, result = result, error = error }
+
+            if not error then
+                log.info('websocket', error)
+            end
 
             ws:send(json.encode(response), true)
         end)
@@ -145,7 +120,7 @@ local function handleTask(ws, json_data)
 end
 
 local function startWebSocket()
-    
+
     log.info("websocket", "开始连接")
 
     -- websocket 连接
@@ -155,11 +130,7 @@ local function startWebSocket()
     ws:on("open", function()
         log.info("websocket", "连接已打开")
         -- 发送JSON数据
-        local json_data = {
-            type = "online",
-            imei = misc.getImei(),
-            phone = util_mobile.getNumber()
-        }
+        local json_data = { type = "online", imei = misc.getImei(), phone = util_mobile.getNumber() }
         ws:send(json.encode(json_data), true)
     end)
 
@@ -183,6 +154,4 @@ local function startWebSocket()
     ws:start(120)
 end
 
-return {
-    start = startWebSocket
-} 
+return { start = startWebSocket }
