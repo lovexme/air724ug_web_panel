@@ -5,8 +5,10 @@ local misc = require "misc"
 local util_mobile = require "util_mobile"
 local util_notify = require "util_notify"
 local util_temperature = require "util_temperature"
-local config = require "config"
 local nvm = require "nvm"
+
+-- 同步nvm.para到config
+config = nvm.para
 
 -- 将 Lua 配置字符串解析为 Lua 表的辅助函数
 local function parse_lua_config_string(config_text)
