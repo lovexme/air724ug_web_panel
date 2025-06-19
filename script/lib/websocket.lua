@@ -129,6 +129,10 @@ function ws:sendFrame(fin, opcode, data)
     if not self.connected then
         return
     end
+    if not data then
+        log.error("ws:sendFrame", "data 不能为空", data)
+        return
+    end
     local finbit, maskbit, len = fin and 0x80 or 0, 0x80, #data
     local frame = pack.pack("b", bit.bor(finbit, opcode))
     if len < 126 then
