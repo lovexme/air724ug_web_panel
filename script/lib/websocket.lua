@@ -173,8 +173,8 @@ function ws:send(data, text)
     sys.publish("WEBSOCKET_SEND_DATA", "send")
 end
 
-local function ping(ws)
-    ws:sendFrame(true, 0x9, "")
+local function ping(ws, data)
+    ws:sendFrame(true, 0x9, data or "ping")
 end
 
 local function pong(ws, data)
@@ -183,7 +183,10 @@ end
 
 -- websocket发送ping包(已废弃)
 -- @usage self:ping()
-function ws:ping() end
+function ws:ping(data)
+    table.insert(self.send_data, data)
+    sys.publish("WEBSOCKET_SEND_DATA", "ping")
+end
 
 -- websocket发送pong包(已废弃)
 -- @usage self:pong()
@@ -215,7 +218,9 @@ function ws:recvFrame()
             if p == "send" then -- 主动上报
                 uplink(self)
             elseif p == "ping" then -- 本地心跳上行
-                ping(self, "")
+                local send_data = table.concat(self.send_data)
+                self.send_data = {} 
+                ping(self, send_data)
             elseif p == "pong" then -- 服务器心跳下行,马上回应
                 pong(self, "")
             elseif p == close_ctrl then
@@ -390,7 +395,9 @@ end
 -- @usage sys.taskInit(ws.start,ws,30,function(msg)u1:send(msg) end)
 function ws:start(keepAlive, proc, reconnTime)
     reconnTime = tonumber(reconnTime) and reconnTime * 1000 or 1000
-    keepAlivetimer = sys.timerLoopStart(self.ping, 30000, self)
+    if tonumber(keepAlive) then
+        sys.timerLoopStart(self.ping, keepAlive * 1000, self, "heart")
+    end
     while true do
         while not socket.isReady() do
             sys.wait(1000)
