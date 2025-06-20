@@ -13,6 +13,7 @@ interface Device {
 
 const deviceList = ref<Device[]>([])
 const loading = ref(false)
+const refreshing = ref(false)
 const router = useRouter()
 const searchQuery = ref('')
 
@@ -37,7 +38,7 @@ function goToControl(device: Device) {
 }
 
 // 获取设备列表
-async function fetchDeviceList() {
+async function fetchDeviceList(isRefresh = false) {
   loading.value = true
   try {
     const response = await request.get<Device[]>('/userPool')
@@ -49,7 +50,15 @@ async function fetchDeviceList() {
   }
   finally {
     loading.value = false
+    if (isRefresh)
+      refreshing.value = false
   }
+}
+
+// 下拉刷新
+function onRefresh() {
+  refreshing.value = true
+  fetchDeviceList(true)
 }
 
 onMounted(() => {
@@ -61,16 +70,9 @@ onMounted(() => {
   <div class="device-list">
     <template v-if="deviceList.length > 0">
       <van-search v-model="searchQuery" class="search-bar" placeholder="搜索 IMEI 或手机号" />
-      <van-pull-refresh v-model="loading" @refresh="fetchDeviceList">
-        <van-cell-group :inset="true">
-          <van-cell v-if="loading" center>
-            <template #title>
-              <van-loading type="spinner" size="24px">
-                加载中...
-              </van-loading>
-            </template>
-          </van-cell>
-          <template v-else>
+      <div class="list-scroll">
+        <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+          <van-cell-group :inset="true">
             <van-cell
               v-for="device in filteredDevices" :key="device.imei" :title="device.imei"
               :label="`No: ${device.phone || '未设置'}`" is-link @click="goToControl(device)"
@@ -82,9 +84,9 @@ onMounted(() => {
                 </van-tag>
               </template>
             </van-cell>
-          </template>
-        </van-cell-group>
-      </van-pull-refresh>
+          </van-cell-group>
+        </van-pull-refresh>
+      </div>
     </template>
     <template v-if="deviceList.length === 0">
       <van-empty class="custom-empty" description="暂无设备数据">
@@ -157,5 +159,10 @@ onMounted(() => {
 .custom-empty {
   padding: 32px 0;
   background-color: #fff;
+}
+
+.list-scroll {
+  height: 100%;
+  overflow-y: auto;
 }
 </style>
